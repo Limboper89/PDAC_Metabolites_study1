@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDAC vs Normal Metabolites</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {
+      --ink: #0f172a;
+      --muted: #6b7280;
+      --panel: #0b2239;
+      --accent: #f76b1c;
+      --accent-2: #1c8c73;
+      --border: rgba(255, 255, 255, 0.08);
+      --card: rgba(255, 255, 255, 0.04);
+      --bg: radial-gradient(circle at 20% 20%, rgba(31, 139, 116, 0.12), transparent 25%), radial-gradient(circle at 80% 0%, rgba(247, 107, 28, 0.12), transparent 30%), #0a1424;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Space Grotesk', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: #e5e7eb;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(24px, 2.8vw, 32px);
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+    .shell {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .row {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 280px 1fr;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: #cbd5e1;
+      font-size: 12px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px 11px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: #e5e7eb;
+      font-size: 14px;
+      outline: none;
+      transition: border 0.2s ease, background 0.2s ease;
+    }
+    input:focus, select:focus { border-color: rgba(247, 107, 28, 0.7); background: rgba(255, 255, 255, 0.06); }
+    .filters .filter { margin-bottom: 12px; }
+    select[multiple] { height: 160px; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .controls .control { display: flex; flex-direction: column; gap: 4px; }
+    .controls label { font-size: 12px; color: #cbd5e1; }
+    .metric {
+      padding: 12px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(247, 107, 28, 0.08), rgba(28, 140, 115, 0.12));
+      border: 1px solid var(--border);
+    }
+    .metric .label { color: var(--muted); font-size: 12px; }
+    .metric .value { font-size: 20px; font-weight: 600; margin-top: 6px; }
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 12px;
+    }
+    .panel {
+      min-height: 360px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+    }
+    .wide {
+      grid-column: span 2;
+    }
+    .panel h3 {
+      margin: 4px 6px 10px;
+      color: #e2e8f0;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead { color: #cbd5e1; }
+    th, td {
+      padding: 8px 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    tbody tr { cursor: pointer; transition: background 0.15s ease; }
+    tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
+    tbody tr.active { background: rgba(247, 107, 28, 0.08); }
+    .tag { display: inline-flex; padding: 3px 8px; border-radius: 8px; font-size: 12px; }
+    .tag.normal { background: rgba(28, 140, 115, 0.12); color: #7ee0c3; }
+    .tag.tumor { background: rgba(247, 107, 28, 0.12); color: #f9b283; }
+    .table-wrapper { max-height: 420px; overflow: auto; }
+    .hint { color: var(--muted); font-size: 12px; }
+    .selected-meta { display: flex; justify-content: space-between; align-items: center; padding: 0 8px; }
+    @media (max-width: 960px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell grid" style="gap: 14px;">
+    <header class="grid" style="gap: 6px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="pill">PDAC tissue study</div>
+        <div class="pill">Interactive dashboard</div>
+      </div>
+      <h1>Metabolite landscape: PDAC vs Normal</h1>
+      <div class="sub">Explore fold change, significance, and sample-level abundances. Click any row or point to inspect per-sample values.</div>
+      <div class="sub">Data sourced from PDAC tissue metabolomics study (PMC9479084: <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC9479084/" style="color:#f9b283;">paper link</a>).</div>
+    </header>
+
+    <div class="row">
+      <section class="card filters">
+        <div class="filter">
+          <label for="search">Search metabolite or HMDB</label>
+          <input id="search" type="text" placeholder="e.g. Kynurenic acid or HMDB0000715">
+        </div>
+        <div class="filter">
+          <label for="classFilter">Class</label>
+          <select id="classFilter"></select>
+        </div>
+        <div class="filter">
+          <label for="pFilter">Max p-value</label>
+          <input id="pFilter" type="number" step="0.001" min="0" value="0.05">
+        </div>
+        <div class="filter">
+          <label for="fcFilter">Min |log2 FC|</label>
+          <input id="fcFilter" type="number" step="0.1" min="0" value="0">
+        </div>
+        <div class="filter">
+          <label for="heatmapSelect">Heatmap metabolites (multi-select)</label>
+          <select id="heatmapSelect" multiple></select>
+          <div class="hint">Pick multiple metabolites to stack in the heatmap (Normal left, Tumor right).</div>
+        </div>
+        <div class="hint">Filters apply live across charts and table. P-value and FC cutoffs keep only metabolites meeting those thresholds.</div>
+      </section>
+
+      <section class="grid" style="gap:12px;">
+        <div class="metrics">
+          <div class="metric">
+            <div class="label">Metabolites (filtered / total)</div>
+            <div class="value" id="metCount">–</div>
+          </div>
+          <div class="metric">
+            <div class="label">Samples: Normal / Tumor</div>
+            <div class="value" id="sampleCount">–</div>
+          </div>
+          <div class="metric">
+            <div class="label">Median |log2 FC|</div>
+            <div class="value" id="medianFc">–</div>
+          </div>
+          <div class="metric">
+            <div class="label">Median p-value</div>
+            <div class="value" id="medianP">–</div>
+          </div>
+        </div>
+        <div class="card" style="padding:12px;">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;">
+            <div class="pill">Plot controls</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="pill" id="dlVolcano">Download volcano PNG</button>
+              <button class="pill" id="dlCorrelation">Download correlation PNG</button>
+              <button class="pill" id="dlBoxplot">Download boxplot PNG</button>
+              <button class="pill" id="dlHeatmap">Download heatmap PNG</button>
+            </div>
+          </div>
+          <div class="controls">
+            <div class="control">
+              <label>Volcano x-range (log2 FC)</label>
+              <div style="display:flex;gap:6px;">
+                <input id="vxMin" type="number" step="0.5" placeholder="min">
+                <input id="vxMax" type="number" step="0.5" placeholder="max">
+              </div>
+            </div>
+            <div class="control">
+              <label>Correlation x-range (Mean Normal)</label>
+              <div style="display:flex;gap:6px;">
+                <input id="cxMin" type="number" step="0.5" placeholder="min">
+                <input id="cxMax" type="number" step="0.5" placeholder="max">
+              </div>
+            </div>
+            <div class="control">
+              <label>Correlation y-range (Mean Tumor)</label>
+              <div style="display:flex;gap:6px;">
+                <input id="cyMin" type="number" step="0.5" placeholder="min">
+                <input id="cyMax" type="number" step="0.5" placeholder="max">
+              </div>
+            </div>
+            <div class="control">
+              <label for="heatColor">Heatmap colors</label>
+              <select id="heatColor">
+                <option value="Reds">Reds</option>
+                <option value="YlOrRd">YlOrRd</option>
+                <option value="Blues">Blues</option>
+                <option value="Viridis">Viridis</option>
+                <option value="Greys">Greys</option>
+              </select>
+            </div>
+          </div>
+          <div class="hint">Leave ranges blank for auto. Change colorscale to recolor the heatmap; edits apply live.</div>
+        </div>
+
+        <div class="charts">
+          <div class="panel">
+            <h3>Volcano plot (log2 FC vs -log10 p)</h3>
+            <div id="volcano" style="height:360px;"></div>
+          </div>
+          <div class="panel">
+            <div class="selected-meta">
+              <h3 style="margin:0;">Per-sample distribution</h3>
+              <div id="selectedName" class="pill" style="border:none;background:rgba(255,255,255,0.08);">Select a metabolite</div>
+            </div>
+            <div id="boxplot" style="height:360px;"></div>
+          </div>
+          <div class="panel">
+            <h3>Correlation plot (mean Normal vs mean Tumor)</h3>
+            <div id="correlation" style="height:360px;"></div>
+          </div>
+          <div class="panel wide">
+            <h3>Sample heatmap (abundance by sample)</h3>
+            <div id="heatmap" style="height:420px;"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="selected-meta" style="margin-bottom:8px;">
+        <h3 style="margin:0;">Metabolite table (click to inspect)</h3>
+        <div class="hint" id="tableStatus"></div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Class</th>
+              <th>Metabolite</th>
+              <th>HMDB</th>
+              <th>log2 FC</th>
+              <th>FC (T/N)</th>
+              <th>p-value</th>
+              <th>Mean Normal</th>
+              <th>Mean Tumor</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const BASE_COLUMNS = 6;
+    let sampleMeta = [];
+    let metabolites = [];
+    let filtered = [];
+    let selected = null;
+    let heatmapSelection = [];
+
+    const fmt = (num, digits = 3) => (num === null || num === undefined || Number.isNaN(num)) ? '–' : Number(num).toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: Math.min(2, digits) });
+    const median = arr => {
+      if (!arr.length) return null;
+      const sorted = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    };
+
+    async function loadData() {
+      const text = await fetch('PDACvsNormal.csv').then(r => r.text());
+      const parsed = Papa.parse(text.trim(), { skipEmptyLines: false });
+      const rows = parsed.data;
+      const sampleIds = rows[0].slice(BASE_COLUMNS);
+      const groupLabels = rows[1].slice(BASE_COLUMNS);
+      sampleMeta = sampleIds.map((id, idx) => ({
+        id: id || `Sample ${idx + 1}`,
+        group: (groupLabels[idx] || 'Unknown').trim() || 'Unknown',
+        colOffset: idx
+      }));
+
+      metabolites = rows.slice(2)
+        .filter(r => r.length >= BASE_COLUMNS && r[1])
+        .map(cols => {
+          const values = sampleMeta.map((_, i) => {
+            const raw = cols[BASE_COLUMNS + i];
+            const num = raw === undefined || raw === '' ? null : Number(raw);
+            return Number.isFinite(num) ? num : null;
+          });
+
+          const normals = [];
+          const tumors = [];
+          sampleMeta.forEach((s, idx) => {
+            const v = values[idx];
+            if (v === null) return;
+            if (s.group.toLowerCase().startsWith('normal')) normals.push(v);
+            else if (s.group.toLowerCase().startsWith('tumor')) tumors.push(v);
+          });
+
+          const safeP = cols[5] ? Number(cols[5]) : null;
+          const negLogP = safeP && safeP > 0 ? -Math.log10(safeP) : null;
+
+          return {
+            class: cols[0],
+            metabolite: cols[1],
+            hmdb: cols[2],
+            log2fc: Number(cols[3]),
+            fc: Number(cols[4]),
+            p: safeP,
+            negLogP,
+            normalMean: normals.length ? normals.reduce((a, b) => a + b, 0) / normals.length : null,
+            tumorMean: tumors.length ? tumors.reduce((a, b) => a + b, 0) / tumors.length : null,
+            sampleValues: sampleMeta.map((meta, i) => ({ ...meta, value: values[i] }))
+          };
+        });
+
+      populateClassFilter();
+      applyFilters();
+    }
+
+    function populateClassFilter() {
+      const select = document.getElementById('classFilter');
+      const classes = Array.from(new Set(metabolites.map(m => m.class || 'Unlabeled'))).sort();
+      select.innerHTML = '<option value=\"all\">All classes</option>' + classes.map(c => `<option value=\"${c}\">${c}</option>`).join('');
+    }
+
+    function populateHeatmapSelect() {
+      const select = document.getElementById('heatmapSelect');
+      const options = filtered.slice(0, 300);
+      if (heatmapSelection.length === 0) {
+        heatmapSelection = options.slice(0, 5).map(m => m.metabolite);
+      } else {
+        heatmapSelection = heatmapSelection.filter(name => options.some(o => o.metabolite === name));
+      }
+      select.innerHTML = options.map(m => {
+        const sel = heatmapSelection.includes(m.metabolite) ? 'selected' : '';
+        return `<option value=\"${m.metabolite}\" ${sel}>${m.metabolite}</option>`;
+      }).join('');
+    }
+
+    function syncHeatmapSelection(row) {
+      if (!row) return;
+      if (!heatmapSelection.includes(row.metabolite)) {
+        heatmapSelection = [...heatmapSelection, row.metabolite].slice(-10);
+        populateHeatmapSelect();
+        renderHeatmap();
+      }
+    }
+
+    function applyFilters() {
+      const term = document.getElementById('search').value.trim().toLowerCase();
+      const cls = document.getElementById('classFilter').value;
+      const maxP = Number(document.getElementById('pFilter').value) || Infinity;
+      const minAbsFc = Number(document.getElementById('fcFilter').value) || 0;
+
+      filtered = metabolites.filter(m => {
+        const matchText = !term || [m.metabolite, m.hmdb, m.class].some(v => (v || '').toLowerCase().includes(term));
+        const matchClass = cls === 'all' || m.class === cls;
+        const matchP = m.p === null ? false : m.p <= maxP;
+        const matchFc = m.log2fc === null ? false : Math.abs(m.log2fc) >= minAbsFc;
+        return matchText && matchClass && matchP && matchFc;
+      });
+
+      if (!selected || !filtered.includes(selected)) {
+        selected = filtered[0] || null;
+      }
+
+      populateHeatmapSelect();
+      renderSummary();
+      renderTable();
+      renderVolcano();
+      renderSelection();
+    }
+
+    function renderSummary() {
+      const metCount = document.getElementById('metCount');
+      metCount.textContent = `${filtered.length} / ${metabolites.length}`;
+
+      const normalCount = sampleMeta.filter(s => s.group.toLowerCase().startsWith('normal')).length;
+      const tumorCount = sampleMeta.filter(s => s.group.toLowerCase().startsWith('tumor')).length;
+      document.getElementById('sampleCount').textContent = `${normalCount} normal · ${tumorCount} tumor`;
+
+      const fcVals = filtered.map(m => Math.abs(m.log2fc)).filter(Number.isFinite);
+      document.getElementById('medianFc').textContent = fmt(median(fcVals));
+
+      const pVals = filtered.map(m => m.p).filter(v => v !== null && !Number.isNaN(v));
+      document.getElementById('medianP').textContent = fmt(median(pVals), 4);
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+      const rows = [...filtered].sort((a, b) => (a.p ?? Infinity) - (b.p ?? Infinity)).slice(0, 300);
+      document.getElementById('tableStatus').textContent = `Showing ${rows.length} rows (sorted by p-value)`;
+
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        if (row === selected) tr.classList.add('active');
+        tr.innerHTML = `
+          <td>${row.class || '–'}</td>
+          <td>${row.metabolite || '–'}</td>
+          <td>${row.hmdb || '–'}</td>
+          <td>${fmt(row.log2fc)}</td>
+          <td>${fmt(row.fc)}</td>
+          <td>${fmt(row.p, 4)}</td>
+          <td>${fmt(row.normalMean)}</td>
+          <td>${fmt(row.tumorMean)}</td>
+        `;
+        tr.addEventListener('click', () => {
+          selected = row;
+          renderSelection();
+          renderTable();
+          highlightPoint(row);
+          syncHeatmapSelection(row);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function getRange(minEl, maxEl) {
+      const min = parseFloat(document.getElementById(minEl).value);
+      const max = parseFloat(document.getElementById(maxEl).value);
+      if (Number.isFinite(min) && Number.isFinite(max) && min < max) return [min, max];
+      return undefined;
+    }
+
+    function renderVolcano() {
+      const x = filtered.map(m => m.log2fc);
+      const y = filtered.map(m => m.negLogP);
+      const labels = filtered.map(m => `${m.metabolite} (${m.class})`);
+      const colors = filtered.map(m => (m.log2fc || 0) >= 0 ? 'rgba(247,107,28,0.75)' : 'rgba(28,140,115,0.75)');
+
+      const trace = {
+        x, y, text: labels, mode: 'markers',
+        marker: { color: colors, size: 9, line: { color: '#0a1424', width: 1 } },
+        hovertemplate: '<b>%{text}</b><br>log2 FC: %{x:.2f}<br>-log10 p: %{y:.2f}<extra></extra>'
+      };
+      const layout = {
+        margin: { l: 45, r: 10, t: 10, b: 40 },
+        paper_bgcolor: '#f8fafc',
+        plot_bgcolor: '#f8fafc',
+        xaxis: { title: 'log2 fold change', zeroline: true, zerolinecolor: '#94a3b8', gridcolor: '#e2e8f0', range: getRange('vxMin','vxMax') },
+        yaxis: { title: '-log10 p-value', gridcolor: '#e2e8f0' },
+        dragmode: 'pan'
+      };
+      Plotly.newPlot('volcano', [trace], layout, { displaylogo: false, responsive: true });
+      const volcano = document.getElementById('volcano');
+      volcano.on('plotly_click', ev => {
+        const point = filtered[ev.points[0].pointIndex];
+        selected = point;
+        renderSelection();
+        renderTable();
+        syncHeatmapSelection(point);
+      });
+    }
+
+    function renderCorrelation() {
+      const data = filtered.filter(m => Number.isFinite(m.normalMean) && Number.isFinite(m.tumorMean));
+      const trace = {
+        x: data.map(m => m.normalMean),
+        y: data.map(m => m.tumorMean),
+        text: data.map(m => `${m.metabolite} (${m.class})`),
+        mode: 'markers',
+        marker: {
+          size: 9,
+          color: data.map(m => m.log2fc || 0),
+          colorscale: 'RdBu',
+          colorbar: { title: 'log2 FC' },
+          showscale: true,
+          line: { color: '#e2e8f0', width: 0.8 }
+        },
+        hovertemplate: '<b>%{text}</b><br>Mean Normal: %{x:.2f}<br>Mean Tumor: %{y:.2f}<extra></extra>'
+      };
+      const layout = {
+        margin: { l: 70, r: 20, t: 10, b: 60 },
+        paper_bgcolor: '#f8fafc',
+        plot_bgcolor: '#f8fafc',
+        xaxis: { title: 'Mean Normal', gridcolor: '#e2e8f0', range: getRange('cxMin','cxMax') },
+        yaxis: { title: 'Mean Tumor', gridcolor: '#e2e8f0', range: getRange('cyMin','cyMax') },
+        dragmode: 'pan'
+      };
+      Plotly.react('correlation', [trace], layout, { displaylogo: false, responsive: true });
+
+      const corrPlot = document.getElementById('correlation');
+      corrPlot.on('plotly_click', ev => {
+        const point = data[ev.points[0].pointIndex];
+        selected = point;
+        renderSelection();
+        renderTable();
+        syncHeatmapSelection(point);
+      });
+    }
+
+    function highlightPoint(row) {
+      const index = filtered.indexOf(row);
+      if (index < 0) return;
+      Plotly.Fx.hover('volcano', [{ curveNumber: 0, pointNumber: index }]);
+    }
+
+    function renderSelection() {
+      const nameTag = document.getElementById('selectedName');
+      if (!selected) {
+        nameTag.textContent = 'No metabolite';
+        Plotly.react('boxplot', []);
+        Plotly.react('correlation', []);
+        renderHeatmap();
+        return;
+      }
+      nameTag.textContent = selected.metabolite;
+
+      const normal = selected.sampleValues.filter(s => s.group.toLowerCase().startsWith('normal') && s.value !== null).map(s => s.value);
+      const tumor = selected.sampleValues.filter(s => s.group.toLowerCase().startsWith('tumor') && s.value !== null).map(s => s.value);
+
+      const traces = [
+        { y: normal, name: 'Normal', type: 'box', boxpoints: 'all', jitter: 0.4, pointpos: 0, marker: { color: '#1c8c73' }, line: { color: '#1c8c73' } },
+        { y: tumor, name: 'Tumor', type: 'box', boxpoints: 'all', jitter: 0.4, pointpos: 0, marker: { color: '#f76b1c' }, line: { color: '#f76b1c' } }
+      ];
+      const layout = {
+        margin: { l: 50, r: 10, t: 10, b: 20 },
+        paper_bgcolor: '#f8fafc',
+        plot_bgcolor: '#f8fafc',
+        yaxis: { title: 'Abundance', gridcolor: '#e2e8f0' },
+        boxmode: 'group',
+        showlegend: true,
+        legend: { orientation: 'h', y: -0.15 }
+      };
+      Plotly.react('boxplot', traces, layout, { displaylogo: false, responsive: true });
+
+      renderCorrelation();
+      renderHeatmap();
+    }
+
+    function renderHeatmap() {
+      const orderedSamples = [
+        ...sampleMeta.filter(s => s.group.toLowerCase().startsWith('normal')),
+        ...sampleMeta.filter(s => s.group.toLowerCase().startsWith('tumor')),
+        ...sampleMeta.filter(s => !s.group.toLowerCase().startsWith('normal') && !s.group.toLowerCase().startsWith('tumor'))
+      ];
+      const normalCount = orderedSamples.filter(s => s.group.toLowerCase().startsWith('normal')).length;
+
+      const rows = heatmapSelection
+        .map(name => filtered.find(m => m.metabolite === name) || metabolites.find(m => m.metabolite === name))
+        .filter(Boolean);
+      if (!rows.length) {
+        Plotly.react('heatmap', []);
+        return;
+      }
+
+      const xLabels = orderedSamples.map(s => `${s.id} (${s.group.replace(/\\s+.*/, '')})`);
+      const z = rows.map(r => orderedSamples.map(s => {
+        const match = r.sampleValues.find(v => v.id === s.id);
+        const val = match ? match.value : null;
+        return val !== null ? val : null;
+      }));
+      const hover = rows.map(r => orderedSamples.map(s => {
+        const match = r.sampleValues.find(v => v.id === s.id);
+        const val = match ? match.value : null;
+        return `${r.metabolite}<br>${s.id} — ${s.group}<br>Abundance: ${val !== null ? val : 'NA'}`;
+      }));
+
+      const colorscale = document.getElementById('heatColor').value || 'Reds';
+      const trace = {
+        type: 'heatmap',
+        x: xLabels,
+        y: rows.map(r => r.metabolite),
+        z,
+        text: hover,
+        hoverinfo: 'text',
+        colorscale,
+        colorbar: { title: 'Abundance' },
+        showscale: true
+      };
+      const shapes = [];
+      if (normalCount > 0) {
+        shapes.push({
+          type: 'line',
+          xref: 'x',
+          yref: 'paper',
+          x0: normalCount - 0.5,
+          x1: normalCount - 0.5,
+          y0: 0,
+          y1: 1,
+          line: { color: '#94a3b8', width: 1, dash: 'dot' }
+        });
+      }
+      const layout = {
+        margin: { l: 140, r: 40, t: 10, b: 90 },
+        paper_bgcolor: '#f8fafc',
+        plot_bgcolor: '#f8fafc',
+        xaxis: { tickangle: -45, gridcolor: '#e2e8f0' },
+        yaxis: { automargin: true },
+        shapes
+      };
+      Plotly.react('heatmap', [trace], layout, { displaylogo: false, responsive: true });
+    }
+
+    ['search', 'classFilter', 'pFilter', 'fcFilter'].forEach(id => {
+      document.getElementById(id).addEventListener('input', applyFilters);
+    });
+    ['vxMin','vxMax','cxMin','cxMax','cyMin','cyMax'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => { renderVolcano(); renderCorrelation(); });
+    });
+    document.getElementById('heatColor').addEventListener('change', renderHeatmap);
+    document.getElementById('heatmapSelect').addEventListener('change', e => {
+      heatmapSelection = Array.from(e.target.selectedOptions).map(o => o.value);
+      renderHeatmap();
+    });
+
+    const downloadPlot = (id, name) => {
+      Plotly.downloadImage(id, { format: 'png', filename: name, width: 1400, height: 900, scale: 2 });
+    };
+    document.getElementById('dlVolcano').onclick = () => downloadPlot('volcano', 'volcano_plot');
+    document.getElementById('dlCorrelation').onclick = () => downloadPlot('correlation', 'correlation_plot');
+    document.getElementById('dlBoxplot').onclick = () => downloadPlot('boxplot', 'boxplot_selected_metabolite');
+    document.getElementById('dlHeatmap').onclick = () => downloadPlot('heatmap', 'heatmap_samples');
+
+    loadData();
+  </script>
+</body>
+</html>
